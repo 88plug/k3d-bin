@@ -1,0 +1,109 @@
+name: Auto-release
+
+# Tracks upstream k3d-io/k3d.
+# Daily cron + on every push to main.
+# When upstream tag != PKGBUILD pkgver: bump PKGBUILD + .SRCINFO with fresh multi-arch SHA256s,
+# commit, tag v<ver>, dispatch aur-deploy.yml.
+
+on:
+  schedule:
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  release:
+    if: "github.actor != '88plug-bot' && !contains(github.event.head_commit.message, '[skip release]')"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Compare upstream vs PKGBUILD
+        id: compare
+        run: |
+          UPSTREAM=$(curl -s https://api.github.com/repos/k3d-io/k3d/releases/latest | jq -r .tag_name | tr -d v)
+          CURRENT=$(grep '^pkgver=' PKGBUILD | cut -d= -f2)
+          echo "upstream=$UPSTREAM" >> "$GITHUB_OUTPUT"
+          echo "current=$CURRENT"  >> "$GITHUB_OUTPUT"
+          if [ "$UPSTREAM" = "$CURRENT" ]; then
+            echo "needs_update=false" >> "$GITHUB_OUTPUT"
+            echo "Already at $CURRENT."
+          else
+            echo "needs_update=true" >> "$GITHUB_OUTPUT"
+            echo "Upgrade $CURRENT -> $UPSTREAM"
+          fi
+
+      - name: Fetch upstream checksums and extract per-arch SHA256
+        if: steps.compare.outputs.needs_update == 'true'
+        id: sums
+        run: |
+          NEW="${{ steps.compare.outputs.upstream }}"
+          curl -sL "https://github.com/k3d-io/k3d/releases/download/v${NEW}/checksums.txt" -o /tmp/checksums.txt
+          AMD64=$(grep '_dist/k3d-linux-amd64$'  /tmp/checksums.txt | awk '{print $1}')
+          ARM64=$(grep '_dist/k3d-linux-arm64$'  /tmp/checksums.txt | awk '{print $1}')
+          ARMV7=$(grep '_dist/k3d-linux-arm$'    /tmp/checksums.txt | awk '{print $1}')
+          for v in AMD64 ARM64 ARMV7; do
+            eval "val=\$$v"
+            if [ -z "$val" ]; then echo "::error::missing $v checksum"; exit 1; fi
+          done
+          echo "amd64=$AMD64" >> "$GITHUB_OUTPUT"
+          echo "arm64=$ARM64" >> "$GITHUB_OUTPUT"
+          echo "armv7=$ARMV7" >> "$GITHUB_OUTPUT"
+
+      - name: Update PKGBUILD and .SRCINFO
+        if: steps.compare.outputs.needs_update == 'true'
+        run: |
+          NEW="${{ steps.compare.outputs.upstream }}"
+          AMD64="${{ steps.sums.outputs.amd64 }}"
+          ARM64="${{ steps.sums.outputs.arm64 }}"
+          ARMV7="${{ steps.sums.outputs.armv7 }}"
+
+          # PKGBUILD
+          sed -i "s/^pkgver=.*/pkgver=$NEW/" PKGBUILD
+          sed -i "s/^pkgrel=.*/pkgrel=1/"     PKGBUILD
+          sed -i "s/^sha256sums_x86_64=.*/sha256sums_x86_64=('$AMD64')/" PKGBUILD
+          sed -i "s/^sha256sums_aarch64=.*/sha256sums_aarch64=('$ARM64')/" PKGBUILD
+          sed -i "s/^sha256sums_armv7h=.*/sha256sums_armv7h=('$ARMV7')/"   PKGBUILD
+
+          # .SRCINFO
+          sed -i "s/pkgver = .*/pkgver = $NEW/"  .SRCINFO
+          sed -i "s/pkgrel = .*/pkgrel = 1/"     .SRCINFO
+          sed -i "s|LICENSE::https://raw.githubusercontent.com/k3d-io/k3d/v[^/]*/LICENSE|LICENSE::https://raw.githubusercontent.com/k3d-io/k3d/v$NEW/LICENSE|" .SRCINFO
+          sed -i "s|k3d-[^-]*-linux-amd64::https://github.com/k3d-io/k3d/releases/download/v[^/]*/k3d-linux-amd64|k3d-$NEW-linux-amd64::https://github.com/k3d-io/k3d/releases/download/v$NEW/k3d-linux-amd64|" .SRCINFO
+          sed -i "s|k3d-[^-]*-linux-arm64::https://github.com/k3d-io/k3d/releases/download/v[^/]*/k3d-linux-arm64|k3d-$NEW-linux-arm64::https://github.com/k3d-io/k3d/releases/download/v$NEW/k3d-linux-arm64|" .SRCINFO
+          sed -i "s|k3d-[^-]*-linux-arm::https://github.com/k3d-io/k3d/releases/download/v[^/]*/k3d-linux-arm|k3d-$NEW-linux-arm::https://github.com/k3d-io/k3d/releases/download/v$NEW/k3d-linux-arm|" .SRCINFO
+          sed -i "s/sha256sums_x86_64 = .*/sha256sums_x86_64 = $AMD64/"   .SRCINFO
+          sed -i "s/sha256sums_aarch64 = .*/sha256sums_aarch64 = $ARM64/" .SRCINFO
+          sed -i "s/sha256sums_armv7h = .*/sha256sums_armv7h = $ARMV7/"   .SRCINFO
+
+          # Also update PKGBUILD URL strings inside the source_X arrays
+          sed -i "s|k3d-${{ steps.compare.outputs.current }}-linux-amd64|k3d-$NEW-linux-amd64|" PKGBUILD
+          sed -i "s|k3d-${{ steps.compare.outputs.current }}-linux-arm64|k3d-$NEW-linux-arm64|" PKGBUILD
+          sed -i "s|k3d-${{ steps.compare.outputs.current }}-linux-arm|k3d-$NEW-linux-arm|"     PKGBUILD
+          sed -i "s|releases/download/v${{ steps.compare.outputs.current }}|releases/download/v$NEW|g" PKGBUILD
+          sed -i "s|/k3d-io/k3d/v${{ steps.compare.outputs.current }}/LICENSE|/k3d-io/k3d/v$NEW/LICENSE|" PKGBUILD
+
+      - name: Commit + tag + push
+        if: steps.compare.outputs.needs_update == 'true'
+        run: |
+          NEW="${{ steps.compare.outputs.upstream }}"
+          git config user.name  "88plug-bot"
+          git config user.email "andrew@88plug.com"
+          git add PKGBUILD .SRCINFO
+          git commit -m "auto: bump to $NEW [skip release]"
+          git tag "v$NEW"
+          git push origin main
+          git push origin "v$NEW"
+
+      - name: Dispatch AUR Deploy
+        if: steps.compare.outputs.needs_update == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh workflow run aur-deploy.yml -f version=${{ steps.compare.outputs.upstream }}
