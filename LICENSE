@@ -1,10 +1,6 @@
-This packaging (PKGBUILD, workflows, README) is licensed MIT.
-The k3d binary it distributes is licensed under the upstream k3d MIT license:
-https://github.com/k3d-io/k3d/blob/main/LICENSE
-
 MIT License
 
-Copyright (c) 2026 Andrew Mello
+Copyright (c) 2026 Andrew Mello <andrew@88plug.com>
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal

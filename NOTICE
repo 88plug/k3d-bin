@@ -1,0 +1,20 @@
+k3d-bin (AUR packaging)
+Copyright (c) 2026 Andrew Mello <andrew@88plug.com>
+
+The packaging in this repository (PKGBUILD, workflows, README) is licensed
+under MIT — see LICENSE.
+
+---
+
+Upstream binary attribution
+----------------------------
+
+This package distributes the pre-built `k3d` binary from k3d-io/k3d, which
+is licensed under the MIT License:
+
+  https://github.com/k3d-io/k3d/blob/main/LICENSE
+
+Copyright © 2019-2023 Thorsten Klein <tk@thklein.io> and contributors.
+
+Both this packaging and the upstream binary are MIT-licensed; their
+copyright holders differ.
