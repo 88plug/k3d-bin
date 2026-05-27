@@ -5,6 +5,7 @@ AUR package for [k3d](https://github.com/k3d-io/k3d) — run [k3s](https://k3s.i
 [![AUR](https://img.shields.io/aur/version/k3d-bin?label=AUR&style=flat-square)](https://aur.archlinux.org/packages/k3d-bin)
 [![CI](https://img.shields.io/github/actions/workflow/status/88plug/k3d-bin/auto-release.yml?label=auto-release&style=flat-square)](https://github.com/88plug/k3d-bin/actions)
 [![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](https://github.com/k3d-io/k3d/blob/main/LICENSE)
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/88plug/k3d-bin)
 
 ## Install
 
